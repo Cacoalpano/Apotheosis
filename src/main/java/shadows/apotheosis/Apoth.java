@@ -24,7 +24,9 @@ import shadows.apotheosis.adventure.affix.reforging.ReforgingMenu;
 import shadows.apotheosis.adventure.affix.reforging.ReforgingTableBlock;
 import shadows.apotheosis.adventure.affix.reforging.ReforgingTableTile;
 import shadows.apotheosis.adventure.affix.salvaging.SalvagingMenu;
+import shadows.apotheosis.adventure.affix.salvaging.SalvagingRecipe;
 import shadows.apotheosis.adventure.affix.salvaging.SalvagingTableBlock;
+import shadows.apotheosis.adventure.affix.salvaging.SalvagingTableTile;
 import shadows.apotheosis.adventure.affix.socket.SocketAffix;
 import shadows.apotheosis.adventure.boss.BossSpawnerBlock;
 import shadows.apotheosis.adventure.boss.BossSpawnerBlock.BossSpawnerTile;
@@ -216,6 +218,7 @@ public class Apoth {
 		public static final BlockEntityType<AnvilTile> ANVIL = null;
 		public static final BlockEntityType<EnchLibraryTile> ENDER_LIBRARY = null;
 		public static final BlockEntityType<BossSpawnerTile> BOSS_SPAWNER = null;
+		public static final BlockEntityType<SalvagingTableTile> SALVAGING_TABLE = null;
 		public static final BlockEntityType<ReforgingTableTile> REFORGING_TABLE = null;
 	}
 
@@ -295,8 +298,9 @@ public class Apoth {
 
 	public static final class RecipeTypes {
 		public static final RecipeType<FletchingRecipe> FLETCHING = PlaceboUtil.makeRecipeType(Apotheosis.MODID + ":fletching");
-		public static final RecipeType<EnchantingRecipe> INFUSION = PlaceboUtil.makeRecipeType("apotheosis:enchanting");
-		public static final RecipeType<SpawnerModifier> MODIFIER = PlaceboUtil.makeRecipeType("apotheosis:spawner_modifier");
+		public static final RecipeType<EnchantingRecipe> INFUSION = PlaceboUtil.makeRecipeType(Apotheosis.MODID +":enchanting");
+		public static final RecipeType<SpawnerModifier> MODIFIER = PlaceboUtil.makeRecipeType(Apotheosis.MODID +":spawner_modifier");
+		public static final RecipeType<SalvagingRecipe> SALVAGING = PlaceboUtil.makeRecipeType(Apotheosis.MODID +":salvaging");
 	}
 
 	public static final class LootTables {

@@ -52,9 +52,7 @@ import shadows.apotheosis.adventure.affix.AffixManager;
 import shadows.apotheosis.adventure.affix.reforging.ReforgingMenu;
 import shadows.apotheosis.adventure.affix.reforging.ReforgingTableBlock;
 import shadows.apotheosis.adventure.affix.reforging.ReforgingTableTile;
-import shadows.apotheosis.adventure.affix.salvaging.SalvageItem;
-import shadows.apotheosis.adventure.affix.salvaging.SalvagingMenu;
-import shadows.apotheosis.adventure.affix.salvaging.SalvagingTableBlock;
+import shadows.apotheosis.adventure.affix.salvaging.*;
 import shadows.apotheosis.adventure.affix.socket.AddSocketsRecipe;
 import shadows.apotheosis.adventure.affix.socket.ExpulsionRecipe;
 import shadows.apotheosis.adventure.affix.socket.ExtractionRecipe;
@@ -173,6 +171,7 @@ public class AdventureModule {
 	public void tiles(Register<BlockEntityType<?>> e) {
 		e.getRegistry().register(new TickingBlockEntityType<>(BossSpawnerTile::new, ImmutableSet.of(Apoth.Blocks.BOSS_SPAWNER), false, true).setRegistryName("boss_spawner"));
 		e.getRegistry().register(new TickingBlockEntityType<>(ReforgingTableTile::new, ImmutableSet.of(Apoth.Blocks.REFORGING_TABLE), true, false).setRegistryName("reforging_table"));
+		e.getRegistry().register(new BlockEntityType<>(SalvagingTableTile::new, ImmutableSet.of(Apoth.Blocks.SALVAGING_TABLE), null).setRegistryName("salvaging_table"));
 	}
 
 	@SubscribeEvent
@@ -181,6 +180,7 @@ public class AdventureModule {
 		e.getRegistry().register(ExpulsionRecipe.Serializer.INSTANCE.setRegistryName("expulsion"));
 		e.getRegistry().register(ExtractionRecipe.Serializer.INSTANCE.setRegistryName("extraction"));
 		e.getRegistry().register(AddSocketsRecipe.Serializer.INSTANCE.setRegistryName("add_sockets"));
+		e.getRegistry().register(SalvagingRecipe.Serializer.INSTANCE.setRegistryName("salvaging"));
 	}
 
 	@SubscribeEvent
@@ -193,7 +193,7 @@ public class AdventureModule {
 	@SubscribeEvent
 	public void containers(Register<MenuType<?>> e) {
 		e.getRegistry().register(ContainerUtil.makeType(ReforgingMenu::new).setRegistryName("reforging"));
-		e.getRegistry().register(new MenuType<>(SalvagingMenu::new).setRegistryName("salvage"));
+		e.getRegistry().register(ContainerUtil.makeType(SalvagingMenu::new).setRegistryName("salvage"));
 	}
 
 	@SubscribeEvent

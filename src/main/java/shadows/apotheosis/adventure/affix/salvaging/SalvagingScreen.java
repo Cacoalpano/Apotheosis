@@ -1,17 +1,24 @@
 package shadows.apotheosis.adventure.affix.salvaging;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
+import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.block.model.ItemTransforms;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.TranslatableComponent;
@@ -21,139 +28,203 @@ import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import shadows.apotheosis.Apotheosis;
-import shadows.apotheosis.adventure.AdventureModule;
-import shadows.apotheosis.adventure.affix.AffixHelper;
+import shadows.apotheosis.adventure.client.GhostVertexBuilder;
 import shadows.apotheosis.adventure.client.SimpleTexButton;
-import shadows.apotheosis.adventure.loot.LootRarity;
-import shadows.placebo.util.ClientUtil;
+import shadows.placebo.screen.PlaceboContainerScreen;
 
-public class SalvagingScreen extends AbstractContainerScreen<SalvagingMenu> {
+public class SalvagingScreen extends PlaceboContainerScreen<SalvagingMenu> {
 
-	public static final ResourceLocation TEXTURE = new ResourceLocation(Apotheosis.MODID, "textures/gui/salvage.png");
+    public static final ResourceLocation TEXTURE = new ResourceLocation(Apotheosis.MODID, "textures/gui/salvage.png");
+    public static final Component TITLE = new TranslatableComponent("container.apotheosis.salvage");
 
-	protected final int[] numOuts = new int[12];
-	protected final ItemStack[] mats = new ItemStack[6];
-	protected final TextureAtlasSprite[] sprites = new TextureAtlasSprite[6];
-	protected final Component results = new TranslatableComponent("text.apotheosis.results");
-	protected SimpleTexButton salvageBtn;
+    List<SalvagingRecipe.OutputData> results = new ArrayList<>();
+    protected SimpleTexButton salvageBtn;
 
-	public SalvagingScreen(SalvagingMenu menu, Inventory inv, Component title) {
-		super(menu, inv, title);
-		this.menu.setButtonUpdater(this::updateButtons);
-		for (int i = 0; i < 5; i++) {
-			mats[i] = new ItemStack(AdventureModule.RARITY_MATERIALS.get(LootRarity.values().get(i)).get());
-			sprites[i] = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS).apply(new ResourceLocation(Apotheosis.MODID, "items/" + mats[i].getItem().getRegistryName().getPath()));
-		}
-		this.titleLabelX--;
-		this.inventoryLabelX--;
-		this.inventoryLabelY++;
-	}
+    public SalvagingScreen(SalvagingMenu menu, Inventory inv, Component title) {
+        super(menu, inv, TITLE);
+        this.menu.setButtonUpdater(this::computeResults);
+        this.titleLabelX--;
+        this.inventoryLabelX--;
+        this.inventoryLabelY++;
+    }
 
-	@Override
-	protected void init() {
-		super.init();
-		int left = this.getGuiLeft();
-		int top = this.getGuiTop();
-		//Formatter::off
-		salvageBtn = this.addRenderableWidget(
-				new SimpleTexButton(left + 105, top + 33, 20, 20, 196, 0, TEXTURE, 256, 256, 
-						(btn) -> this.minecraft.gameMode.handleInventoryButtonClick((this.menu).containerId, 0), 
-						new TranslatableComponent("button.apotheosis.salvage"))
-						.setInactiveMessage(new TranslatableComponent("button.apotheosis.no_salvage").withStyle(ChatFormatting.RED))
-				);
-		//Formatter::on
-		updateButtons();
-	}
+    @Override
+    protected void init() {
+        super.init();
+        int left = this.getGuiLeft();
+        int top = this.getGuiTop();
+        // Formatter::off
+        salvageBtn = this.addRenderableWidget(new SimpleTexButton(left + 105, top + 33, 20, 20, 196, 0, TEXTURE, 256,
+                256, (btn) -> minecraft.gameMode.handleInventoryButtonClick((this.menu).containerId, 0),
+                new TranslatableComponent("button.apotheosis.salvage")).setInactiveMessage(
+                new TranslatableComponent("button.apotheosis.no_salvage").withStyle(ChatFormatting.RED)));
+        // Formatter::on
+        computeResults();
+    }
 
-	public void updateButtons() {
-		if (this.salvageBtn == null) return;
-		Arrays.fill(numOuts, 0);
-		boolean btnActive = false;
+    public void computeResults() {
+        if (this.salvageBtn == null)
+            return;
 
-		for (int i = 0; i < 15; i++) {
-			Slot s = this.menu.getSlot(i);
-			ItemStack stack = s.getItem();
-			LootRarity rarity = AffixHelper.getRarity(stack);
-			if (rarity != null) {
-				btnActive = true;
-				int ord = rarity.ordinal();
-				int[] counts = SalvagingMenu.getSalvageCounts(stack);
-				numOuts[ord * 2] += counts[0];
-				numOuts[ord * 2 + 1] += counts[1];
-			}
-		}
+        var matches = new ArrayList<SalvagingRecipe.OutputData>();
 
-		this.salvageBtn.active = btnActive;
-	}
+        for (int i = 0; i < 15; i++) {
+            Slot s = this.menu.getSlot(i);
+            ItemStack stack = s.getItem();
+            var recipe = SalvagingMenu.findMatch(Minecraft.getInstance().level, stack);
+            if (recipe != null) {
+                for (SalvagingRecipe.OutputData d : recipe.getOutputs()) {
+                    int[] counts = SalvagingMenu.getSalvageCounts(d, stack);
+                    matches.add(new SalvagingRecipe.OutputData(d.stack, counts[0], counts[1]));
+                }
+            }
+        }
 
-	@Override
-	public void render(PoseStack stack, int pMouseX, int pMouseY, float pPartialTick) {
-		this.renderBackground(stack);
-		super.render(stack, pMouseX, pMouseY, pPartialTick);
-		int left = this.getGuiLeft();
-		int top = this.getGuiTop();
+        List<SalvagingRecipe.OutputData> compressed = new ArrayList<>();
 
-		RenderSystem.setShaderTexture(0, InventoryMenu.BLOCK_ATLAS);
-		RenderSystem.enableBlend();
+        for (SalvagingRecipe.OutputData data : matches) {
+            if (data == null)
+                continue;
+            boolean success = false;
+            for (SalvagingRecipe.OutputData existing : compressed) {
+                if (ItemStack.isSameItemSameTags(data.stack, existing.stack)) {
+                    existing.min += data.min;
+                    existing.max += data.max;
+                    success = true;
+                    break;
+                }
+            }
+            if (!success)
+                compressed.add(data);
+        }
 
-		for (int i = 0; i < 5; i++) {
-			if (numOuts[i * 2 + 1] > 0) {
-				ClientUtil.colorBlit(stack, left + 134 + i % 2 * 18, top + 17 + i / 2 * 18, 100, 16, 16, sprites[i], 0x99FFFFFF);
-			}
-		}
+        this.results = compressed;
+        this.salvageBtn.active = !this.results.isEmpty();
 
-		this.renderTooltip(stack, pMouseX, pMouseY);
-	}
+    }
 
-	@Override
-	protected void renderBg(PoseStack pPoseStack, float pPartialTick, int pX, int pY) {
-		RenderSystem.setShader(GameRenderer::getPositionTexShader);
-		RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-		RenderSystem.setShaderTexture(0, TEXTURE);
-		this.blit(pPoseStack, this.getGuiLeft(), this.getGuiTop(), 0, 0, this.imageWidth, this.imageHeight);
-	}
+    @Override
+    public void render(PoseStack stack, int pMouseX, int pMouseY, float pPartialTick) {
+        this.renderBackground(stack);
+        super.render(stack, pMouseX, pMouseY, pPartialTick);
+        int left = this.getGuiLeft();
+        int top = this.getGuiTop();
 
-	@Override
-	protected void renderTooltip(PoseStack stack, int x, int y) {
-		stack.pushPose();
-		stack.translate(0, 0, -100);
-		List<Component> tooltip = new ArrayList<>();
-		tooltip.add(new TranslatableComponent("text.apotheosis.salvage_results").withStyle(ChatFormatting.YELLOW, ChatFormatting.UNDERLINE));
+        RenderSystem.setShaderTexture(0, InventoryMenu.BLOCK_ATLAS);
+        RenderSystem.enableBlend();
 
-		for (int i = 0; i < 5; i++) {
-			if (numOuts[i * 2 + 1] > 0) {
-				tooltip.add(new TranslatableComponent("%s-%s %s", numOuts[i * 2], numOuts[i * 2 + 1], mats[i].getHoverName()));
-			}
-		}
+        int maxDisplay = Math.min(6, this.results.size());
 
-		if (tooltip.size() > 1) drawOnLeft(stack, tooltip, this.getGuiTop() + 29);
-		stack.popPose();
+        IntSet skipSlots = new IntOpenHashSet();
+        for (int i = 0; i < maxDisplay; i++) {
+            ItemStack display = this.results.get(i).stack;
+            // Search for an empty slot to draw the ghost item on.
+            // Skip drawing the item if it already exists in the output inventory.
+            int displaySlot = -1;
+            for (int slot = 0; slot < 6; slot++) {
+                if (skipSlots.contains(slot))
+                    continue;
+                ItemStack outStack = this.menu.slots.get(15 + slot).getItem();
+                if (outStack.isEmpty()) {
+                    displaySlot = slot;
+                    skipSlots.add(slot);
+                    break;
+                } else if (outStack.is(display.getItem())) {
+                    break;
+                }
+            }
+            if (displaySlot == -1)
+                continue;
+            var model = this.itemRenderer.getModel(display, null, null, 0);
+            renderGuiItem(display, left + 134 + displaySlot % 2 * 18, top + 17 + displaySlot / 2 * 18, model,
+                    GhostVertexBuilder.GhostBufferSource::new);
+        }
 
-		super.renderTooltip(stack, x, y);
-	}
+        this.renderTooltip(stack, pMouseX, pMouseY);
+    }
 
-	public void drawOnLeft(PoseStack stack, List<Component> list, int y) {
-		if (list.isEmpty()) return;
-		int xPos = this.getGuiLeft() - 16 - list.stream().map(this.font::width).max(Integer::compare).get();
-		int maxWidth = 9999;
-		if (xPos < 0) {
-			maxWidth = this.getGuiLeft() - 6;
-			xPos = -8;
-		}
+    protected void renderGuiItem(ItemStack pStack, int pX, int pY, BakedModel pBakedModel,
+                                 Function<MultiBufferSource, MultiBufferSource> wrapper) {
+        Minecraft.getInstance().textureManager.getTexture(InventoryMenu.BLOCK_ATLAS).setFilter(false, false);
+        RenderSystem.setShaderTexture(0, InventoryMenu.BLOCK_ATLAS);
+        RenderSystem.enableBlend();
+        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        PoseStack posestack = RenderSystem.getModelViewStack();
+        posestack.pushPose();
+        posestack.translate((double) pX, (double) pY,
+                (double) (100.0F + Minecraft.getInstance().getItemRenderer().blitOffset));
+        posestack.translate(8.0D, 8.0D, 0.0D);
+        posestack.scale(1.0F, -1.0F, 1.0F);
+        posestack.scale(16.0F, 16.0F, 16.0F);
+        RenderSystem.applyModelViewMatrix();
+        PoseStack posestack1 = new PoseStack();
+        boolean flag = !pBakedModel.usesBlockLight();
+        if (flag) {
+            Lighting.setupForFlatItems();
+        }
 
-		List<FormattedText> split = new ArrayList<>();
-		int lambdastupid = maxWidth;
-		list.forEach(comp -> split.addAll(this.font.getSplitter().splitLines(comp, lambdastupid, comp.getStyle())));
+        MultiBufferSource.BufferSource buffer = Minecraft.getInstance().renderBuffers().bufferSource();
+        Minecraft.getInstance().getItemRenderer().render(pStack, ItemTransforms.TransformType.GUI, false, posestack1,
+                wrapper.apply(buffer), LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, pBakedModel);
+        buffer.endBatch();
+        RenderSystem.enableDepthTest();
+        if (flag) {
+            Lighting.setupFor3DItems();
+        }
 
-		this.renderComponentTooltip(stack, split, xPos, y, this.font);
+        posestack.popPose();
+        RenderSystem.applyModelViewMatrix();
+    }
 
-		//GuiUtils.drawHoveringText(stack, list, xPos, y, width, height, maxWidth, this.font);
-	}
+    @Override
+    protected void renderBg(PoseStack pPoseStack, float pPartialTick, int pX, int pY) {
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShaderTexture(0, TEXTURE);
+        this.blit(pPoseStack, this.getGuiLeft(), this.getGuiTop(), 0, 0, this.imageWidth, this.imageHeight);
+    }
 
-	@Override
-	protected void renderLabels(PoseStack stack, int mouseX, int mouseY) {
-		this.font.draw(stack, this.results, 133, (float) this.titleLabelY, 4210752);
-		super.renderLabels(stack, mouseX, mouseY);
-	}
+    @Override
+    protected void renderTooltip(PoseStack stack, int x, int y) {
+        stack.pushPose();
+        stack.translate(0, 0, -100);
+        List<Component> tooltip = new ArrayList<>();
+        tooltip.add(new TranslatableComponent("text.apotheosis.salvage_results").withStyle(ChatFormatting.YELLOW,
+                ChatFormatting.UNDERLINE));
 
+        for (SalvagingRecipe.OutputData data : this.results) {
+            tooltip.add(new TranslatableComponent("%s-%s %s", data.min, data.max, data.stack.getHoverName()));
+        }
+
+        if (tooltip.size() > 1)
+            drawOnLeft(stack, tooltip, this.getGuiTop() + 29);
+        stack.popPose();
+
+        super.renderTooltip(stack, x, y);
+    }
+
+    public void drawOnLeft(PoseStack stack, List<Component> list, int y) {
+        if (list == null || list.isEmpty())
+            return;
+        int xPos = this.getGuiLeft() - 16 - list.stream().map(this.font::width).max(Integer::compare).get();
+        int maxWidth = 9999;
+        if (xPos < 0) {
+            maxWidth = this.getGuiLeft() - 6;
+            xPos = -8;
+        }
+
+        List<FormattedText> split = new ArrayList<>();
+        int lambdastupid = maxWidth;
+        list.forEach(comp -> split.addAll(this.font.getSplitter().splitLines(comp, lambdastupid, comp.getStyle())));
+
+        this.renderComponentTooltip(stack, split, xPos, y, this.font);
+    }
+
+    @Override
+    protected void renderLabels(PoseStack stack, int mouseX, int mouseY) {
+        this.font.draw(stack, new TranslatableComponent("text.apotheosis.results"), 133, (float) this.titleLabelY,
+                4210752);
+        super.renderLabels(stack, mouseX, mouseY);
+    }
 }
