@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
@@ -20,6 +21,7 @@ import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import shadows.apotheosis.Apoth;
+import shadows.apotheosis.util.ItemAdapterCustom;
 import shadows.placebo.json.ItemAdapter;
 
 import java.util.ArrayList;
@@ -91,7 +93,7 @@ public class SalvagingRecipe implements Recipe<Container> {
 
         @Override
         public SalvagingRecipe fromJson(ResourceLocation id, JsonObject obj) {
-            var outputs = getOutputData(obj);
+            var outputs = OutputData.LIST_CODEC.decode(JsonOps.INSTANCE, GsonHelper.getAsJsonArray(obj, "outputs")).result().get().getFirst();
             Ingredient input = Ingredient.fromJson(obj.get("input"));
             return new SalvagingRecipe(id, outputs, input);
         }
@@ -112,15 +114,6 @@ public class SalvagingRecipe implements Recipe<Container> {
             buf.writeNbt(netWrapper);
             recipe.input.toNetwork(buf);
         }
-
-        private List<OutputData> getOutputData(JsonObject json) {
-            List<OutputData> list = new ArrayList<>();
-            JsonArray array = GsonHelper.getAsJsonArray(json, "outputs");
-            for (JsonElement element : array) {
-                list.add(OutputData.parse(element.getAsJsonObject()));
-            }
-            return list;
-        }
     }
 
 
@@ -128,7 +121,7 @@ public class SalvagingRecipe implements Recipe<Container> {
 
         public static Codec<OutputData> CODEC = RecordCodecBuilder.create(inst -> inst
                 .group(
-                        ItemStack.CODEC.fieldOf("stack").forGetter(d -> d.stack),
+                        ItemAdapterCustom.CODEC.fieldOf("stack").forGetter(d -> d.stack),
                         Codec.intRange(0, 64).fieldOf("min_count").forGetter(d -> d.min),
                         Codec.intRange(0, 64).fieldOf("max_count").forGetter(d -> d.max))
                 .apply(inst, OutputData::new));
@@ -157,18 +150,6 @@ public class SalvagingRecipe implements Recipe<Container> {
         public int getMax() {
             return this.max;
         }
-
-        public static OutputData parse(JsonObject obj) {
-            ItemStack stack = ItemStack.EMPTY;
-            JsonElement item = obj.get("stack");
-            if (item != null && item.isJsonObject()) {
-                stack = ItemAdapter.ITEM_READER.fromJson(item, ItemStack.class);
-            }
-            int min = obj.get("min_count").getAsInt();
-            int max = obj.get("max_count").getAsInt();
-            return new OutputData(stack, min, max);
-        }
-
 
     }
 }
